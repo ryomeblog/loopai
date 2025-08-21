@@ -1,0 +1,125 @@
+{
+  "tasks": [
+    {
+      "id": "hello_task",
+      "name": "挨拶タスク",
+      "command": "echo 'Hello, Claude Task Runner!'",
+      "completion_conditions": [
+        {
+          "type": "output_contains",
+          "pattern": "Hello"
+        }
+      ],
+      "max_retries": 3,
+      "timeout": 30
+    },
+    {
+      "id": "file_creation_task",
+      "name": "ファイル作成タスク",
+      "command": "echo 'This is a test file' > test_output.txt",
+      "completion_conditions": [
+        {
+          "type": "file_exists",
+          "path": "test_output.txt"
+        },
+        {
+          "type": "file_contains",
+          "path": "test_output.txt",
+          "pattern": "test file"
+        }
+      ],
+      "max_retries": 5,
+      "timeout": 60
+    },
+    {
+      "id": "error_simulation_task",
+      "name": "エラーシミュレーションタスク",
+      "command": "echo 'This will fail' && exit 1",
+      "completion_conditions": [
+        {
+          "type": "output_contains",
+          "pattern": "success"
+        }
+      ],
+      "max_retries": 2,
+      "timeout": 30
+    },
+    {
+      "id": "complex_task",
+      "name": "複合条件タスク",
+      "command": "mkdir -p output && echo 'Complex task completed successfully' > output/result.txt",
+      "completion_conditions": [
+        {
+          "type": "file_exists",
+          "path": "output/result.txt"
+        },
+        {
+          "type": "file_contains",
+          "path": "output/result.txt",
+          "pattern": "successfully"
+        },
+        {
+          "type": "output_contains",
+          "pattern": "mkdir"
+        }
+      ],
+      "max_retries": 4,
+      "timeout": 120
+    },
+    {
+      "id": "timeout_task",
+      "name": "タイムアウットタスク",
+      "command": "sleep 10 && echo 'This should not be seen'",
+      "completion_conditions": [
+        {
+          "type": "output_contains",
+          "pattern": "not be seen"
+        }
+      ],
+      "max_retries": 1,
+      "timeout": 5
+    },
+    {
+      "id": "website_check_task",
+      "name": "Webサイト確認タスク",
+      "command": "echo 'Webサイトを確認します'",
+      "completion_conditions": [
+        {
+          "type": "website_exists",
+          "url": "https://www.google.com",
+          "timeout": 10
+        }
+      ],
+      "max_retries": 3,
+      "timeout": 30
+    },
+    {
+      "id": "test_command_task",
+      "name": "テストコマンド実行タスク",
+      "command": "echo 'テストコマンドを実行します'",
+      "completion_conditions": [
+        {
+          "type": "test_command",
+          "command": "echo 'test success' && exit 0",
+          "timeout": 30
+        }
+      ],
+      "max_retries": 2,
+      "timeout": 60
+    },
+    {
+      "id": "claude_confirmation_task",
+      "name": "Claude Code確認タスク",
+      "command": "echo 'Claude Codeで確認します'",
+      "completion_conditions": [
+        {
+          "type": "claude_code_confirmation",
+          "prompt": "このタスクが正常に完了したらOKと答えてください",
+          "timeout": 60
+        }
+      ],
+      "max_retries": 2,
+      "timeout": 120
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+# LoopAI Dependencies
+# 基本的なPython標準ライブラリを使用
+# Webサイト確認機能にはrequestsが必要
+
+requests>=2.25.0
+
+# CLIツールとして実行する場合の推奨環境:
+# Python 3.7+
+# setuptools (パッケージング用)
