@@ -6,8 +6,9 @@ import sys
 import os
 import json
 from typing import List, Optional
-from .utils import Task, load_tasks_from_json, save_tasks_to_json
+from .utils import Task, NaturalLanguageTask, load_tasks_from_json, save_tasks_to_json
 from .task_executor import TaskExecutor
+from .natural_language_executor import NaturalLanguageTaskExecutor
 from .condition_checker import ConditionChecker
 
 
@@ -18,21 +19,29 @@ def create_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 使用例:
-  python -m claude_task_runner run tasks.json
-  python -m claude_task_runner check tasks.json --task-id task_1
-  python -m claude_task_runner list tasks.json
-  python -m claude_task_runner validate tasks.json
+  python -m loopai run tasks.json
+  python -m loopai run-natural "Hello, LoopAI!と出力して"
+  python -m loopai check tasks.json --task-id task_1
+  python -m loopai list tasks.json
+  python -m loopai validate tasks.json
         """
     )
     
     subparsers = parser.add_subparsers(dest='command', help='コマンド')
     
-    # runコマンド
-    run_parser = subparsers.add_parser('run', help='タスクを実行する')
+    # runコマンド（従来のJSON形式）
+    run_parser = subparsers.add_parser('run', help='JSON形式のタスクを実行する')
     run_parser.add_argument('file', help='タスク定義ファイルのパス')
     run_parser.add_argument('--task-id', help='実行するタスクID (指定しない場合はすべて実行)')
     run_parser.add_argument('--dry-run', action='store_true', help='実際に実行せずにシミュレーションする')
     run_parser.add_argument('--verbose', '-v', action='store_true', help='詳細な出力を表示する')
+    
+    # run-naturalコマンド（自然言語形式）
+    natural_parser = subparsers.add_parser('run-natural', help='自然言語でタスクを実行する')
+    natural_parser.add_argument('description', help='実行するタスクの自然言語説明')
+    natural_parser.add_argument('--name', help='タスク名（指定しない場合は自動生成）')
+    natural_parser.add_argument('--max-retries', type=int, default=3, help='最大再試行回数')
+    natural_parser.add_argument('--timeout', type=int, default=300, help='タイムアウト秒数')
     
     # checkコマンド
     check_parser = subparsers.add_parser('check', help='完了条件をチェックする')
@@ -57,7 +66,7 @@ def create_parser() -> argparse.ArgumentParser:
 
 
 def run_tasks(args) -> None:
-    """タスクを実行する"""
+    """JSON形式のタスクを実行する"""
     try:
         # タスクファイルを読み込む
         tasks = load_tasks_from_json(args.file)
@@ -97,6 +106,48 @@ def run_tasks(args) -> None:
     except json.JSONDecodeError as e:
         print(f"JSONエラー: {e}")
         sys.exit(1)
+    except Exception as e:
+        print(f"予期せぬエラー: {e}")
+        sys.exit(1)
+
+
+def run_natural_language_task(args) -> None:
+    """自然言語タスクを実行する"""
+    try:
+        # タスク名の生成
+        task_name = args.name or f"自然言語タスク_{hash(args.description) % 10000}"
+        task_id = f"natural_{hash(args.description) % 10000}"
+        
+        # 自然言語タスクの作成
+        task = NaturalLanguageTask(
+            id=task_id,
+            name=task_name,
+            description=args.description,
+            max_retries=args.max_retries,
+            timeout=args.timeout
+        )
+        
+        print(f"🚀 自然言語タスクを開始します")
+        print(f"タスク名: {task_name}")
+        print(f"タスク説明: {args.description}")
+        print(f"最大再試行回数: {args.max_retries}")
+        print(f"タイムアウト: {args.timeout}秒")
+        print("=" * 50)
+        
+        # 自然言語タスク実行
+        executor = NaturalLanguageTaskExecutor()
+        results = {task_id: {'success': False, 'task': task}}
+        
+        success = executor.execute_natural_language_task_until_completion(task)
+        results[task_id]['success'] = success
+        
+        # 結果の表示
+        summary = executor.get_natural_language_task_summary(results)
+        print(summary)
+        
+        # 終了コードを設定
+        sys.exit(0 if success else 1)
+        
     except Exception as e:
         print(f"予期せぬエラー: {e}")
         sys.exit(1)
@@ -310,6 +361,8 @@ def main() -> None:
     
     if args.command == 'run':
         run_tasks(args)
+    elif args.command == 'run-natural':
+        run_natural_language_task(args)
     elif args.command == 'check':
         check_conditions(args)
     elif args.command == 'list':

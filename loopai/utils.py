@@ -11,8 +11,24 @@ from dataclasses import dataclass
 
 
 @dataclass
+class NaturalLanguageTask:
+    """自然言語タスクデータクラス"""
+    id: str
+    name: str
+    description: str
+    max_retries: int = 3
+    timeout: int = 300
+    retry_count: int = 0
+    last_error: Optional[str] = None
+    last_output: Optional[str] = None
+    generated_command: Optional[str] = None
+    generated_conditions: Optional[List[Dict[str, Any]]] = None
+    subtasks: Optional[List['NaturalLanguageTask']] = None
+
+
+@dataclass
 class Task:
-    """タスクデータクラス"""
+    """タスクデータクラス（互換性のため）"""
     id: str
     name: str
     command: str
@@ -286,3 +302,318 @@ def apply_cool_down(seconds: int = 60) -> None:
         print(f"残り時間: {remaining}秒", end='\r')
         time.sleep(1)
     print()
+
+
+def generate_command_from_description(description: str, timeout: int = 60) -> str:
+    """自然言語のタスク説明からClaude Codeコマンドを生成する"""
+    prompt = f"""
+以下の自然言語タスク説明を、実行可能なClaude Codeコマンドに変換してください。
+
+タスク説明: {description}
+
+要件:
+1. 実行可能なコマンドを生成してください
+2. 出力結果がわかるようにしてください
+3. エラー処理を含めてください
+4. コマンドは一行で記述してください
+
+生成したコマンドだけを返してください:
+"""
+    
+    try:
+        result = subprocess.run(
+            ['claude', 'code', prompt],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            encoding='utf-8',
+            errors='replace'
+        )
+        
+        if result.returncode == 0:
+            # Claude Codeの出力からコマンドを抽出
+            lines = result.stdout.strip().split('\n')
+            for line in lines:
+                line = line.strip()
+                if line and not line.startswith('#') and not line.startswith('生成したコマンド'):
+                    return line
+            return result.stdout.strip()
+        else:
+            raise Exception(f"Claude Codeの実行に失敗: {result.stderr}")
+            
+    except subprocess.TimeoutExpired:
+        raise Exception("Claude Codeの実行がタイムアウトしました")
+    except Exception as e:
+        raise Exception(f"Claude Codeの実行中にエラーが発生しました: {str(e)}")
+
+
+def generate_completion_conditions(description: str, command: str, timeout: int = 60) -> List[Dict[str, Any]]:
+    """タスク完了条件を動的に生成する"""
+    prompt = f"""
+以下のタスク情報から、適切な完了条件をJSON形式で生成してください。
+
+タスク説明: {description}
+生成されたコマンド: {command}
+
+完了条件の種類:
+- output_contains: 出力に特定のパターンが含まれる
+- file_exists: 特定のファイルが存在する
+- file_contains: ファイルに特定のパターンが含まれる
+- website_exists: Webサイトにアクセスできる
+- claude_code_confirmation: Claude Codeで確認できる
+
+要件:
+1. タスクが完了したことを確認できる条件を2-3個生成してください
+2. JSON形式で返してください
+3. 各条件にはtypeと必要なパラメータを含めてください
+
+JSON形式で返してください:
+"""
+    
+    try:
+        result = subprocess.run(
+            ['claude', 'code', prompt],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            encoding='utf-8',
+            errors='replace'
+        )
+        
+        if result.returncode == 0:
+            # Claude Codeの出力からJSONを抽出
+            import json
+            lines = result.stdout.strip().split('\n')
+            json_start = -1
+            json_end = -1
+            
+            for i, line in enumerate(lines):
+                line = line.strip()
+                if line.startswith('{'):
+                    json_start = i
+                    break
+            
+            if json_start >= 0:
+                # JSONの終わりを見つける
+                bracket_count = 0
+                for i in range(json_start, len(lines)):
+                    line = lines[i]
+                    bracket_count += line.count('{') - line.count('}')
+                    if bracket_count == 0:
+                        json_end = i
+                        break
+                
+                if json_end >= 0:
+                    json_str = '\n'.join(lines[json_start:json_end+1])
+                    try:
+                        conditions = json.loads(json_str)
+                        if isinstance(conditions, list):
+                            return conditions
+                    except json.JSONDecodeError:
+                        pass
+            
+            # デフォルトの条件を返す
+            return [
+                {
+                    "type": "output_contains",
+                    "pattern": "完了"
+                }
+            ]
+        else:
+            # デフォルトの条件を返す
+            return [
+                {
+                    "type": "output_contains",
+                    "pattern": "完了"
+                }
+            ]
+            
+    except subprocess.TimeoutExpired:
+        # デフォルトの条件を返す
+        return [
+            {
+                "type": "output_contains",
+                "pattern": "完了"
+            }
+        ]
+    except Exception:
+        # デフォルトの条件を返す
+        return [
+            {
+                "type": "output_contains",
+                "pattern": "完了"
+            }
+        ]
+
+
+def analyze_failure_and_improve(task: NaturalLanguageTask, timeout: int = 60) -> str:
+    """タスク失敗の原因を分析し、改善されたコマンドを生成する"""
+    prompt = f"""
+以下のタスクが失敗しました。原因を分析し、改善されたコマンドを生成してください。
+
+タスクID: {task.id}
+タスク名: {task.name}
+タスク説明: {task.description}
+生成されたコマンド: {task.generated_command}
+最後の出力: {task.last_output}
+最後のエラー: {task.last_error}
+
+要件:
+1. 失敗の原因を分析してください
+2. 改善されたコマンドを生成してください
+3. エラーを回避するための対策を含めてください
+4. コマンドは一行で記述してください
+
+改善されたコマンドだけを返してください:
+"""
+    
+    try:
+        result = subprocess.run(
+            ['claude', 'code', prompt],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            encoding='utf-8',
+            errors='replace'
+        )
+        
+        if result.returncode == 0:
+            # Claude Codeの出力からコマンドを抽出
+            lines = result.stdout.strip().split('\n')
+            for line in lines:
+                line = line.strip()
+                if line and not line.startswith('#') and not line.startswith('改善されたコマンド'):
+                    return line
+            return result.stdout.strip()
+        else:
+            raise Exception(f"Claude Codeの実行に失敗: {result.stderr}")
+            
+    except subprocess.TimeoutExpired:
+        raise Exception("Claude Codeの実行がタイムアウトしました")
+    except Exception as e:
+        raise Exception(f"Claude Codeの実行中にエラーが発生しました: {str(e)}")
+
+
+def create_subtask_for_improvement(main_task: NaturalLanguageTask, improvement_description: str, timeout: int = 60) -> NaturalLanguageTask:
+    """改善のためのサブタスクを作成する"""
+    subtask_id = f"{main_task.id}_sub_{main_task.retry_count + 1}"
+    
+    prompt = f"""
+以下の改善タスクから、実行可能なサブタスクを生成してください。
+
+メインタスク: {main_task.name}
+改善内容: {improvement_description}
+
+要件:
+1. 具体的な実行コマンドを生成してください
+2. 適切な完了条件を設定してください
+3. サブタスクの目的を明確にしてください
+
+サブタスク情報をJSON形式で返してください:
+"""
+    
+    try:
+        result = subprocess.run(
+            ['claude', 'code', prompt],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            encoding='utf-8',
+            errors='replace'
+        )
+        
+        if result.returncode == 0:
+            # Claude Codeの出力からJSONを抽出
+            import json
+            lines = result.stdout.strip().split('\n')
+            json_start = -1
+            json_end = -1
+            
+            for i, line in enumerate(lines):
+                line = line.strip()
+                if line.startswith('{'):
+                    json_start = i
+                    break
+            
+            if json_start >= 0:
+                # JSONの終わりを見つける
+                bracket_count = 0
+                for i in range(json_start, len(lines)):
+                    line = lines[i]
+                    bracket_count += line.count('{') - line.count('}')
+                    if bracket_count == 0:
+                        json_end = i
+                        break
+                
+                if json_end >= 0:
+                    json_str = '\n'.join(lines[json_start:json_end+1])
+                    try:
+                        subtask_data = json.loads(json_str)
+                        if isinstance(subtask_data, dict):
+                            subtask = NaturalLanguageTask(
+                                id=subtask_id,
+                                name=subtask_data.get('name', f'サブタスク{main_task.retry_count + 1}'),
+                                description=subtask_data.get('description', improvement_description),
+                                max_retries=2,
+                                timeout=120
+                            )
+                            subtask.generated_command = subtask_data.get('command', '')
+                            subtask.generated_conditions = subtask_data.get('completion_conditions', [
+                                {"type": "output_contains", "pattern": "成功"}
+                            ])
+                            return subtask
+                    except json.JSONDecodeError:
+                        pass
+            
+            # デフォルトのサブタスクを返す
+            return NaturalLanguageTask(
+                id=subtask_id,
+                name=f'改善サブタスク{main_task.retry_count + 1}',
+                description=improvement_description,
+                max_retries=2,
+                timeout=120,
+                generated_command=f"echo '改善処理を実行します: {improvement_description}'",
+                generated_conditions=[
+                    {"type": "output_contains", "pattern": "成功"}
+                ]
+            )
+        else:
+            # デフォルトのサブタスクを返す
+            return NaturalLanguageTask(
+                id=subtask_id,
+                name=f'改善サブタスク{main_task.retry_count + 1}',
+                description=improvement_description,
+                max_retries=2,
+                timeout=120,
+                generated_command=f"echo '改善処理を実行します: {improvement_description}'",
+                generated_conditions=[
+                    {"type": "output_contains", "pattern": "成功"}
+                ]
+            )
+            
+    except subprocess.TimeoutExpired:
+        # デフォルトのサブタスクを返す
+        return NaturalLanguageTask(
+            id=subtask_id,
+            name=f'改善サブタスク{main_task.retry_count + 1}',
+            description=improvement_description,
+            max_retries=2,
+            timeout=120,
+            generated_command=f"echo '改善処理を実行します: {improvement_description}'",
+            generated_conditions=[
+                {"type": "output_contains", "pattern": "成功"}
+            ]
+        )
+    except Exception:
+        # デフォルトのサブタスクを返す
+        return NaturalLanguageTask(
+            id=subtask_id,
+            name=f'改善サブタスク{main_task.retry_count + 1}',
+            description=improvement_description,
+            max_retries=2,
+            timeout=120,
+            generated_command=f"echo '改善処理を実行します: {improvement_description}'",
+            generated_conditions=[
+                {"type": "output_contains", "pattern": "成功"}
+            ]
+        )

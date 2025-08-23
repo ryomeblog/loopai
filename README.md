@@ -4,7 +4,7 @@ Claude CodeをPythonから呼び出してタスクを実行するCLIアプリケ
 
 ## 概要
 
-このツールは、Claude Codeをサブプロセスで実行し、指定されたタスクを実行します。タスクが完了条件を満たすまで実行を続け、エラーが発生した場合はクールタイムを挟んで再試行します。Webサイト確認、テストコマンド実行、Claude Code確認など、多様な完了条件をサポートしています。
+このツールは、Claude Codeをサブプロセスで実行し、指定されたタスクを実行します。従来のJSON形式のタスク定義に加え、自然言語でタスクを指定してClaude Codeが自律的に解釈・実行・改善する機能をサポートしています。Webサイト確認、テストコマンド実行、Claude Code確認など、多様な完了条件をサポートしています。
 
 ## 主な機能
 
@@ -38,6 +38,8 @@ pip install -r requirements.txt
 
 ### 基本的な使い方
 
+#### JSON形式のタスク
+
 ```bash
 # タスク定義ファイルのテンプレートを作成
 python -m loopai create-template my_tasks.json
@@ -59,6 +61,19 @@ python -m loopai check my_tasks.json --task-id specific_task
 
 # ドライラン（シミュレーション）
 python -m loopai run my_tasks.json --dry-run
+```
+
+#### 自然言語形式のタスク
+
+```bash
+# 自然言語でタスクを実行
+python -m loopai run-natural "Hello, LoopAI!と出力して"
+
+# タスク名を指定して実行
+python -m loopai run-natural "現在時刻を表示して" --name "時刻表示タスク"
+
+# 再試行回数とタイムアウトを指定して実行
+python -m loopai run-natural "ファイルを作成して" --max-retries 5 --timeout 600
 ```
 
 ### コマンド詳細
@@ -241,6 +256,8 @@ JSONファイルでタスクを定義します。
 
 ### 実行例
 
+#### JSON形式タスクの実行
+
 ```bash
 # タスク実行
 python -m loopai run tasks/sample_tasks.json
@@ -253,6 +270,22 @@ python -m loopai check tasks/sample_tasks.json --task-id hello_task
 
 # 詳細な出力付きで実行
 python -m loopai run tasks/sample_tasks.json --verbose
+```
+
+#### 自然言語タスクの実行
+
+```bash
+# 基本的な自然言語タスク
+python -m loopai run-natural "Hello, LoopAI!と出力して"
+
+# ファイル操作タスク
+python -m loopai run-natural "テキストファイルを作成して、'Hello World'と書き込む"
+
+# Web関連タスク
+python -m loopai run-natural "https://www.google.comにアクセスできるか確認する"
+
+# 複雑なタスク
+python -m loopai run-natural "現在の日時を取得して、ログファイルに記録する"
 ```
 
 ### 新しい条件タイプの使用例
@@ -302,13 +335,27 @@ python -m loopai run tasks/sample_tasks.json --verbose
 
 ## 動作仕様
 
-### タスク実行の流れ
+### JSON形式タスクの流れ
 
 1. タスク定義ファイルを読み込む
 2. 指定されたタスクを実行
 3. 完了条件をチェック
 4. 条件を満たさない場合は再試行
 5. 最大試行回数に達するまで繰り返し
+
+### 自然言語タスクの流れ
+
+1. 自然言語タスク説明を受け取る
+2. Claude Codeがタスクを解釈して実行コマンドを生成
+3. Claude Codeが完了条件を動的に生成
+4. 生成されたコマンドを実行
+5. 完了条件をチェック
+6. 条件を満たさない場合は以下の自律的改善を実行：
+   - 失敗原因の分析
+   - 改善されたコマンドの生成
+   - サブタスクの作成と実行
+   - メインタスクの改善
+7. 最大試行回数に達するまで繰り返し
 
 ### クールタイム機能
 
@@ -322,6 +369,14 @@ python -m loopai run tasks/sample_tasks.json --verbose
 - コマンド実行エラーの検出
 - ファイルアクセスエラーの処理
 - JSON形式エラーの検証
+
+### 自律的改善機能
+
+- **失敗原因分析**: Claude Codeがタスク失敗の原因を分析
+- **コマンド改善**: 分析結果に基づいて改善されたコマンドを生成
+- **サブタスク生成**: 改善のためのサブタスクを自動作成
+- **自律的実行**: サブタスクを実行してメインタスクを改善
+- **繰り返し改善**: 必要に応じて繰り返し改善プロセスを実行
 
 ## ディレクトリ構成
 
@@ -356,10 +411,10 @@ pip install -r requirements.txt
 
 ```bash
 # テスト用タスクの実行
-python -m claude_task_runner run tasks/sample_tasks.json --dry-run
+python -m loopai run tasks/sample_tasks.json --dry-run
 
 # 特定タスクのテスト
-python -m claude_task_runner check tasks/sample_tasks.json --task-id hello_task
+python -m loopai check tasks/sample_tasks.json --task-id hello_task
 ```
 
 ## 注意事項
@@ -387,7 +442,7 @@ python -m claude_task_runner check tasks/sample_tasks.json --task-id hello_task
   - `website_exists`: Webサイトの存在確認
   - `test_command`: テストコマンド実行
   - `claude_code_confirmation`: Claude Codeで確認
-- コマンド名を `claude_task_runner` から `loopai` に変更
+- コマンド名を `loopai` から `loopai` に変更
 - Webサイト確認機能のための `requests` ライブラリの追加
 - 詳細な条件チェックログの改善
 - サンプルタスクの拡充

@@ -3,7 +3,7 @@
     {
       "id": "hello_task",
       "name": "挨拶タスク",
-      "command": "echo 'Hello, Claude Task Runner!'",
+      "command": "echo 'Hello, LoopAI!'",
       "completion_conditions": [
         {
           "type": "output_contains",
@@ -120,6 +120,19 @@
       ],
       "max_retries": 2,
       "timeout": 120
+    },
+    {
+      "id": "natural_language_example",
+      "name": "自然言語タスク例",
+      "command": "echo '自然言語タスクの例です'",
+      "completion_conditions": [
+        {
+          "type": "output_contains",
+          "pattern": "自然言語"
+        }
+      ],
+      "max_retries": 3,
+      "timeout": 60
     }
   ]
 }
